@@ -87,7 +87,25 @@ $ScriptBlock = {
         $IsActive = if (($CurrentDate - $File.LastAccessTime).Days -lt ($ExpirationMonths * 30)) { $true } else { $false }
         $IsUnwanted = if ($UnwantedExtensions -contains $File.Extension.ToLower()) { $true } else { $false }
         $SizeMB = [math]::Round($File.Length / 1MB, 2)
-
+        $ContainsLinks = $false
+        if ($IsActive -and $_.Extension -eq ".xlsx") {
+            try {
+                $Excel = New-Object -ComObject Excel.Application
+                $Workbook = $Excel.Workbooks.Open($_.FullName, [Type]::Missing, $true)
+                foreach ($Worksheet in $Workbook.Worksheets) {
+                    if ($Worksheet.Hyperlinks.Count -gt 0) {
+                        $ContainsLinks = $true
+                        break
+                    }
+                }
+                $Workbook.Close($false)
+                $Excel.Quit()
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Workbook) | Out-Null
+                [System.Runtime.Interopservices.Marshal]::ReleaseComObject($Excel) | Out-Null
+            } catch {
+                Write-Host "Error checking links in file: $($_.FullName). Error: $_" -ForegroundColor Yellow
+            }
+        }   
         $Result = [PSCustomObject]@{
             FullName      = $File.FullName
             Name          = $File.Name
@@ -97,6 +115,7 @@ $ScriptBlock = {
             Extension     = $File.Extension
             Active        = $IsActive
             Unwanted      = $IsUnwanted
+            ContainsLinks = $ContainsLinks
         }
 
         $SyncHash.Results.Add($Result) | Out-Null
